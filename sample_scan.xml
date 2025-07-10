@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<nmaprun scanner="nmap" args="nmap -sV -sC -oX sample_scan.xml 192.168.1.100" start="1703123456" startstr="Wed Dec 20 10:30:56 2023" version="7.94" xmloutputversion="1.05">
+<scaninfo type="syn" protocol="tcp" numservices="1000" services="1-1000"/>
+<verbose level="0"/>
+<debugging level="0"/>
+<host starttime="1703123456" endtime="1703123500">
+<status state="up" reason="echo-reply"/>
+<address addr="192.168.1.100" addrtype="ipv4"/>
+<hostnames>
+<hostname name="webserver.local" type="PTR"/>
+</hostnames>
+<ports>
+<port protocol="tcp" portid="22">
+<state state="open" reason="syn-ack" reason_ttl="64"/>
+<service name="ssh" product="OpenSSH" version="7.2p2" extrainfo="Ubuntu 4ubuntu2.8" ostype="Linux" method="probed" conf="10"/>
+</port>
+<port protocol="tcp" portid="80">
+<state state="open" reason="syn-ack" reason_ttl="64"/>
+<service name="http" product="Apache httpd" version="2.4.18" extrainfo="(Ubuntu)" method="probed" conf="10"/>
+</port>
+<port protocol="tcp" portid="443">
+<state state="closed" reason="reset" reason_ttl="64"/>
+</port>
+<port protocol="tcp" portid="3306">
+<state state="closed" reason="reset" reason_ttl="64"/>
+</port>
+</ports>
+<times srtt="123" rttvar="456" to="1000000"/>
+</host>
+</nmaprun> 
