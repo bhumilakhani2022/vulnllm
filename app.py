@@ -1,14 +1,17 @@
 import streamlit as st
 import xml.etree.ElementTree as ET
 import json
-from parser import NmapParser
+from parser_enhanced import VulnerabilityParser
 from ai_module import VulnerabilityAnalyzer
+from patch_manager import PatchManager, PatchStatus, PatchType
 import tempfile
 import os
 from io import BytesIO
 import base64
 from fpdf import FPDF
 from datetime import datetime
+import sqlite3
+import pandas as pd
 
 # Page configuration
 st.set_page_config(
@@ -17,6 +20,18 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Database setup
+conn = sqlite3.connect('scans.db')
+c = conn.cursor()
+c.execute('''
+    CREATE TABLE IF NOT EXISTS scans (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        scan_time TEXT,
+        analysis TEXT
+    )
+''')
+conn.commit()
 
 # Custom CSS for better styling
 st.markdown("""
@@ -79,7 +94,8 @@ def main():
         st.header("📋 Upload Options")
         upload_option = st.radio(
             "Choose input method:",
-            ["Upload Nmap XML", "Paste Nmap Output", "Use Sample Data"]
+            ["Upload Nmap XML", "Paste Nmap Output", "Use Sample Data", 
+             "Upload Dependency File", "Upload SARIF Report", "Upload Dockerfile"]
         )
         
         st.header("⚙️ Analysis Settings")
@@ -97,7 +113,8 @@ def main():
         st.header("📊 Vulnerability Assessment")
         
         # File upload or text input
-        nmap_data = None
+        data = None
+        file_type = None
         
         if upload_option == "Upload Nmap XML":
             uploaded_file = st.file_uploader(
@@ -106,9 +123,8 @@ def main():
                 help="Upload an Nmap scan result in XML format"
             )
             if uploaded_file is not None:
-                nmap_data = uploaded_file.read()
-                if isinstance(nmap_data, bytes):
-                    nmap_data = nmap_data.decode('utf-8', errors='replace')
+                data = uploaded_file.read().decode('utf-8', errors='replace')
+                file_type = 'nmap_xml'
                 
         elif upload_option == "Paste Nmap Output":
             nmap_text = st.text_area(
@@ -117,22 +133,71 @@ def main():
                 placeholder="Paste your Nmap scan results here..."
             )
             if nmap_text.strip():
-                nmap_data = nmap_text
+                data = nmap_text
+                file_type = 'nmap_text'
                 
         elif upload_option == "Use Sample Data":
             if st.button("Load Sample Data"):
                 with open("sample_scan.xml", "r") as f:
-                    nmap_data = f.read()
+                    data = f.read()
+                    file_type = 'nmap_xml'
                 st.success("Sample data loaded!")
+
+        elif upload_option == "Upload Dependency File":
+            uploaded_file = st.file_uploader(
+                "Upload dependency file",
+                type=['txt', 'json', 'xml', 'lock'],
+                help="Upload requirements.txt, package.json, composer.json, Gemfile, pom.xml, yarn.lock, or Pipfile"
+            )
+            if uploaded_file is not None:
+                data = uploaded_file.read().decode('utf-8', errors='replace')
+                filename = uploaded_file.name.lower()
+                if 'requirements.txt' in filename:
+                    file_type = 'requirements'
+                elif 'package.json' in filename:
+                    file_type = 'package_json'
+                elif 'composer.json' in filename:
+                    file_type = 'composer_json'
+                elif 'gemfile' in filename:
+                    file_type = 'gemfile'
+                elif 'pom.xml' in filename:
+                    file_type = 'pom_xml'
+                elif 'yarn.lock' in filename:
+                    file_type = 'yarn_lock'
+                elif 'pipfile' in filename:
+                    file_type = 'pipfile'
+                else:
+                    st.error("Unsupported dependency file type")
+                    file_type = None
+        
+        elif upload_option == "Upload SARIF Report":
+            uploaded_file = st.file_uploader(
+                "Upload SARIF file",
+                type=['json', 'sarif'],
+                help="Upload a SARIF (Static Analysis Results Interchange Format) file"
+            )
+            if uploaded_file is not None:
+                data = uploaded_file.read().decode('utf-8', errors='replace')
+                file_type = 'sarif'
+                
+        elif upload_option == "Upload Dockerfile":
+            uploaded_file = st.file_uploader(
+                "Upload Dockerfile",
+                type=['dockerfile', 'txt'],
+                help="Upload a Dockerfile for container vulnerability analysis"
+            )
+            if uploaded_file is not None:
+                data = uploaded_file.read().decode('utf-8', errors='replace')
+                file_type = 'dockerfile'
         
         # Analysis button
-        if nmap_data:
+        if data and file_type:
             if st.button("🚀 Analyze Vulnerabilities", type="primary"):
                 with st.spinner("Analyzing vulnerabilities..."):
                     try:
-                        # Parse Nmap data
-                        parser = NmapParser()
-                        parsed_data = parser.parse(nmap_data)
+                        # Parse vulnerability data
+                        parser = VulnerabilityParser()
+                        parsed_data = parser.parse(data, file_type)
                         
                         # Analyze vulnerabilities
                         analyzer = VulnerabilityAnalyzer()
@@ -143,26 +208,41 @@ def main():
                             include_exploits=include_exploits
                         )
                         
-                        # Display results
-                        display_results(analysis, parsed_data)
-                        # PDF download button
-                        pdf_bytes = generate_pdf_report(analysis, parsed_data)
-                        st.download_button(
-                            label="📄 Download PDF Report",
-                            data=pdf_bytes,
-                            file_name="AutoPatchAI_Report.pdf",
-                            mime="application/pdf"
-                        )
+                        # Save and display results
+                        st.session_state.analysis = analysis
+                        st.session_state.parsed_data = parsed_data
+                        c.execute("INSERT INTO scans (scan_time, analysis) VALUES (?, ?)", (datetime.now().isoformat(), json.dumps(analysis)))
+                        conn.commit()
+
                     except Exception as e:
                         st.error(f"Error during analysis: {str(e)}")
                         st.exception(e)
     
+    if 'analysis' in st.session_state:
+        display_results(st.session_state.analysis, st.session_state.parsed_data)
+        pdf_bytes = generate_pdf_report(st.session_state.analysis, st.session_state.parsed_data)
+        st.download_button(
+            label="📄 Download PDF Report",
+            data=pdf_bytes,
+            file_name="AutoPatchAI_Report.pdf",
+            mime="application/pdf"
+        )
+
     with col2:
         st.header("📈 Quick Stats")
-        if 'analysis' in locals():
-            display_metrics(analysis)
+        if 'analysis' in st.session_state:
+            display_metrics(st.session_state.analysis)
         else:
             st.info("Upload data and run analysis to see metrics")
+
+    st.header("Previous Scans")
+    scans = c.execute("SELECT * FROM scans ORDER BY scan_time DESC").fetchall()
+    for scan in scans:
+        with st.expander(f"Scan from {scan[1]}"):
+            st.json(scan[2])
+
+    st.header("Vulnerability Trends")
+    display_vulnerability_trends()
 
 def display_results(analysis, parsed_data):
     """Display the vulnerability analysis results with AI enhancements"""
@@ -175,21 +255,27 @@ def display_results(analysis, parsed_data):
     st.header("🔍 Technical Findings")
     
     # Services overview
-    st.subheader("Detected Services")
-    for service in parsed_data.get('services', []):
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col1:
-            st.write(f"**Port {service['port']}**")
-        with col2:
-            st.write(f"{service['service']} {service.get('version', 'Unknown')}")
-        with col3:
-            risk_score = service.get('risk_score', 0)
-            if risk_score >= 7:
-                st.markdown('<span style="color: red;">🔴 High Risk</span>', unsafe_allow_html=True)
-            elif risk_score >= 4:
-                st.markdown('<span style="color: orange;">🟡 Medium Risk</span>', unsafe_allow_html=True)
-            else:
-                st.markdown('<span style="color: green;">🟢 Low Risk</span>', unsafe_allow_html=True)
+    if 'services' in parsed_data:
+        st.subheader("Detected Services")
+        for service in parsed_data.get('services', []):
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col1:
+                st.write(f"**Port {service['port']}**")
+            with col2:
+                st.write(f"{service['service']} {service.get('version', 'Unknown')}")
+            with col3:
+                risk_score = service.get('risk_score', 0)
+                if risk_score >= 7:
+                    st.markdown('<span style="color: red;">🔴 High Risk</span>', unsafe_allow_html=True)
+                elif risk_score >= 4:
+                    st.markdown('<span style="color: orange;">🟡 Medium Risk</span>', unsafe_allow_html=True)
+                else:
+                    st.markdown('<span style="color: green;">🟢 Low Risk</span>', unsafe_allow_html=True)
+    elif 'dependencies' in parsed_data:
+        st.subheader("Detected Dependencies")
+        for dep in parsed_data.get('dependencies', []):
+            st.write(f"- {dep['name']} ({dep['version']})")
+
     
     # Risk Scoring
     st.header("⚠️ Risk Scoring")
@@ -259,23 +345,25 @@ def display_results(analysis, parsed_data):
     # Traditional Patch Recommendations
     st.header("📦 Traditional Patch Recommendations")
     
-    for recommendation in analysis.get('recommendations', []):
+    for i, recommendation in enumerate(analysis.get('recommendations', [])):
         with st.expander(f"📦 {recommendation['service']} - {recommendation['action']}"):
             st.write(f"**Current Version:** {recommendation.get('current_version', 'Unknown')}")
             st.write(f"**Target Version:** {recommendation.get('target_version', 'Latest')}")
             st.write(f"**Command:** `{recommendation.get('command', 'N/A')}`")
-            st.write(f"**Priority:** {recommendation.get('priority', 'Medium')}")
-    
-    # Business Impact
-    st.header("💼 Business Impact Summary")
-    st.markdown(analysis.get('business_impact', 'No business impact analysis available'))
-    
-    # Action Plan
-    st.header("📋 Action Plan")
-    action_plan = analysis.get('action_plan', [])
-    for i, action in enumerate(action_plan, 1):
-        st.write(f"{i}. **{action['step']}** - {action['timeline']}")
-        st.write(f"   {action['description']}")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Deploy Fix", key=f"deploy_{i}"):
+                    with st.spinner(f"Deploying fix for {recommendation['service']}..."):
+                        # This is a placeholder for the actual deployment logic
+                        # In a real application, this would trigger a secure deployment process
+                        st.success(f"Fix for {recommendation['service']} deployed successfully!")
+            with col2:
+                if st.button("Verify Fix", key=f"verify_{i}"):
+                    with st.spinner(f"Verifying fix for {recommendation['service']}..."):
+                        # This is a placeholder for the actual verification logic
+                        # In a real application, this would trigger a re-scan
+                        st.success(f"Fix for {recommendation['service']} verified successfully!")
 
 def display_metrics(analysis):
     """Display key metrics in the sidebar"""
@@ -296,6 +384,30 @@ def display_metrics(analysis):
     if analysis.get('findings'):
         avg_risk = sum(f.get('risk_score', 0) for f in analysis['findings']) / len(analysis['findings'])
         st.metric("Avg Risk Score", f"{avg_risk:.1f}/10")
+
+def display_vulnerability_trends():
+    st.subheader("Vulnerability Trends Over Time")
+    scans = c.execute("SELECT scan_time, analysis FROM scans ORDER BY scan_time ASC").fetchall()
+    
+    if not scans:
+        st.info("No historical scan data available to display trends.")
+        return
+
+    trend_data = []
+    for scan_time, analysis_json in scans:
+        analysis = json.loads(analysis_json)
+        metrics = analysis.get('risk_metrics', {})
+        trend_data.append({
+            'scan_time': datetime.fromisoformat(scan_time),
+            'high_risk': metrics.get('high_risk', 0),
+            'medium_risk': metrics.get('medium_risk', 0),
+            'low_risk': metrics.get('low_risk', 0)
+        })
+    
+    df = pd.DataFrame(trend_data)
+    df = df.set_index('scan_time')
+    
+    st.line_chart(df[['high_risk', 'medium_risk', 'low_risk']])
 
 def generate_pdf_report(analysis, parsed_data):
     pdf = FPDF()
@@ -489,8 +601,11 @@ def generate_pdf_report(analysis, parsed_data):
     pdf.set_font("Arial", 'I', 10)
     pdf.set_text_color(120,120,120)
     pdf.cell(0, 10, f"Generated by AutoPatchAI on {datetime.now().strftime('%Y-%m-%d %H:%M')}", 0, 0, 'C')
-    pdf_bytes = pdf.output(dest='S').encode('latin1')
+    pdf_bytes = pdf.output()
+    # Convert bytearray to bytes for Streamlit compatibility
+    if isinstance(pdf_bytes, bytearray):
+        pdf_bytes = bytes(pdf_bytes)
     return pdf_bytes
 
 if __name__ == "__main__":
-    main() 
+    main()

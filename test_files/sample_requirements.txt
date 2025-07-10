@@ -1,0 +1,9 @@
+# Test requirements file
+requests==2.25.1
+flask==1.1.4
+django==3.2.8
+numpy>=1.19.0
+pandas==1.3.0
+sqlalchemy>=1.3.0,<1.5.0
+# Security issue: old vulnerable version
+pillow==8.2.0

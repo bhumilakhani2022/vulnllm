@@ -1,97 +1,98 @@
 #!/usr/bin/env python3
 """
 AutoPatchAI API Setup Script
-This script helps you configure your OpenAI API key for AutoPatchAI.
+This script helps you configure your Gemini API key for AutoPatchAI.
 """
 
 import os
 import sys
+import requests
 from config import Config
 
-def setup_api_key():
-    """Interactive setup for OpenAI API key"""
+
+def setup_api_keys():
+    """Interactive setup for Gemini API keys"""
     print("🔒 AutoPatchAI API Setup")
     print("=" * 40)
-    
-    # Check if API key is already set
-    if Config.validate_api_key():
-        print("✅ OpenAI API key is already configured!")
-        print(f"Current key: {Config.OPENAI_API_KEY[:10]}...")
-        
-        change = input("\nDo you want to change it? (y/N): ").lower().strip()
-        if change != 'y':
-            print("Setup complete!")
-            return
-    
-    print("\nTo use AI-powered features, you need an OpenAI API key.")
-    print("Get your API key from: https://platform.openai.com/api-keys")
-    print()
-    
-    # Get API key from user
-    api_key = input("Enter your OpenAI API key: ").strip()
-    
+
+    # --- Gemini API Key Setup ---
+    print("\n--- Gemini API Key ---")
+    if Config.validate_gemini_key():
+        print("✅ Gemini API key is already configured.")
+        print(f"Current key: {Config.GEMINI_API_KEY[:10]}...")
+        change_gemini = input(
+            "Do you want to change it? (y/N): ").lower().strip()
+        if change_gemini == 'y':
+            configure_gemini_key()
+    else:
+        configure_gemini_key()
+
+    print("\n✨ Setup complete!")
+
+
+def configure_gemini_key():
+    """Handles the configuration process for the Gemini API key."""
+    print("\nTo use AI-powered features, you need a Gemini API key.")
+    print("Get your API key from: https://aistudio.google.com/app/apikey")
+
+    api_key = input("Enter your Gemini API key: ").strip()
+
     if not api_key:
-        print("❌ No API key provided. Setup cancelled.")
+        print("❌ Invalid or no Gemini API key provided. Skipping.")
         return
-    
-    if api_key == 'your-openai-api-key-here' or not api_key.startswith('sk-'):
-        print("❌ Please enter a valid OpenAI API key that starts with 'sk-'.")
-        return
-    
-    # Test the API key
-    print("\n🔍 Testing API key...")
+
+    print("\n🔍 Testing Gemini API key...")
     try:
-        import requests
-        
-        headers = {
-            'Authorization': f'Bearer {api_key}',
-            'Content-Type': 'application/json'
-        }
-        
-        # Make a simple test call
-        test_payload = {
-            "model": "gpt-3.5-turbo",
-            "messages": [{"role": "user", "content": "Hello"}],
-            "max_tokens": 10
-        }
-        
+        headers = {'Authorization': f'Bearer {api_key}'}
+        test_payload = {"model": "gemini-pro",
+                        "messages": [{"role": "user", "content": "Hello"}]}
         response = requests.post(
-            Config.OPENAI_API_URL,
-            headers=headers,
-            json=test_payload,
-            timeout=10
-        )
-        
+            Config.GEMINI_API_URL, headers=headers, json=test_payload, timeout=10)
+
         if response.status_code == 200:
-            print("✅ API key is valid!")
-            
-            # Save the API key
-            Config.set_api_key(api_key)
-            
-            # Create .env file for persistence
-            with open('.env', 'w') as f:
-                f.write(f'OPENAI_API_KEY={api_key}\n')
-            
-            print("✅ API key saved successfully!")
-            print("\nYou can now use AI-powered features in AutoPatchAI.")
-            
+            print("✅ Gemini API key is valid!")
+            Config.set_gemini_key(api_key)
+            update_env_file('GEMINI_API_KEY', api_key)
+            print("✅ Gemini API key saved successfully!")
         else:
-            print(f"❌ API key test failed. Status: {response.status_code}")
-            print("Please check your API key and try again.")
-            
+            print(
+                f"❌ Gemini API key test failed. Status: {response.status_code}")
     except Exception as e:
-        print(f"❌ Error testing API key: {e}")
-        print("Please check your internet connection and try again.")
+        print(f"❌ Error testing Gemini API key: {e}")
+
+
+def update_env_file(key: str, value: str):
+    """Update or add a key-value pair in the .env file."""
+    env_file = '.env'
+    lines = []
+    key_found = False
+
+    if os.path.exists(env_file):
+        with open(env_file, 'r') as f:
+            lines = f.readlines()
+
+    with open(env_file, 'w') as f:
+        for line in lines:
+            if line.strip().startswith(key + '='):
+                f.write(f'{key}={value}\n')
+                key_found = True
+            else:
+                f.write(line)
+        if not key_found:
+            f.write(f'{key}={value}\n')
+
 
 def main():
     """Main setup function"""
     try:
-        setup_api_key()
+        setup_api_keys()
     except KeyboardInterrupt:
         print("\n\nSetup cancelled by user.")
     except Exception as e:
         print(f"\n❌ Setup failed: {e}")
         sys.exit(1)
 
+
 if __name__ == "__main__":
-    main() 
+    main()
+

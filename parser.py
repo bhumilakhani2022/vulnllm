@@ -1,7 +1,157 @@
+    def _parse_composer_json(self, data: str) -> Dict[str, Any]:
+        """Parse composer.json file"""
+        dependencies = []
+        try:
+            composer_data = json.loads(data)
+            for name, version in composer_data.get('require', {}).items():
+                dependencies.append({'name': name, 'version': version})
+            for name, version in composer_data.get('require-dev', {}).items():
+                dependencies.append({'name': name, 'version': version})
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid composer.json format: {e}")
+        return {'dependencies': dependencies}
+
+    def _parse_gemfile(self, data: str) -> Dict[str, Any]:
+        """Parse Gemfile"""
+        dependencies = []
+        # Simplistic gemfile parser (assuming gem version syntax)
+        for line in data.strip().split('\n'):
+            if line.startswith('gem'):
+                parts = re.findall("'(.*?)'", line)
+                if parts:
+                    dependencies.append({'name': parts[0], 'version': parts[1] if len(parts) > 1 else 'latest'})
+        return {'dependencies': dependencies}
+
+    def _parse_pom_xml(self, data: str) -> Dict[str, Any]:
+        """Parse POM XML file"""
+        dependencies = []
+        try:
+            root = ET.fromstring(data)
+            for dependency in root.findall('.//{http://maven.apache.org/POM/4.0.0}dependency'):
+                groupId = dependency.find('{http://maven.apache.org/POM/4.0.0}groupId').text
+                artifactId = dependency.find('{http://maven.apache.org/POM/4.0.0}artifactId').text
+                version = dependency.find('{http://maven.apache.org/POM/4.0.0}version').text
+                dependencies.append({'name': f'{groupId}:{artifactId}', 'version': version})
+        except ET.ParseError as e:
+            raise ValueError(f"Invalid POM XML format: {str(e)}")
+        return {'dependencies': dependencies}
+
+    def _parse_sarif(self, data: str) -> Dict[str, Any]:
+        """Parse SARIF file"""
+        results = []
+        try:
+            sarif_data = json.loads(data)
+            for run in sarif_data.get('runs', []):
+                tool = run.get('tool', {}).get('driver', {}).get('name', 'Unknown')
+                for result in run.get('results', []):
+                    ruleId = result.get('ruleId', 'Unknown')
+                    message = result.get('message', {}).get('text', '')
+                    results.append({'tool': tool, 'ruleId': ruleId, 'message': message})
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid SARIF format: {e}")
+        return {'results': results}
+
+    def _parse_dockerfile(self, data: str) -> Dict[str, Any]:
+        """Parse Dockerfile for base images and commands"""
+        dockerfile_info = {
+            'base_images': [],
+            'commands': []
+        }
+        for line in data.strip().split('\n'):
+            line = line.strip()
+            if line.upper().startswith('FROM'):
+                dockerfile_info['base_images'].append(line.split()[1])
+            else:
+                dockerfile_info['commands'].append(line)
+        return dockerfile_info
+
+    def _parse_yarn_lock(self, data: str) -> Dict[str, Any]:
+        """Parse yarn.lock file"""
+        # Complex parsing for yarn.lock not implemented yet
+        return {'dependencies': []}
+
+    def _parse_composer_json(self, data: str) -> Dict[str, Any]:
+        """Parse composer.json file"""
+        dependencies = []
+        try:
+            composer_data = json.loads(data)
+            for name, version in composer_data.get('require', {}).items():
+                dependencies.append({'name': name, 'version': version})
+            for name, version in composer_data.get('require-dev', {}).items():
+                dependencies.append({'name': name, 'version': version})
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid composer.json format: {e}")
+        return {'dependencies': dependencies}
+
+    def _parse_gemfile(self, data: str) -> Dict[str, Any]:
+        """Parse Gemfile"""
+        dependencies = []
+        # Simple gemfile parser (assuming gem version syntax)
+        for line in data.strip().split('\n'):
+            if line.startswith('gem'):
+                parts = re.findall("'(.*?)'", line)
+                if parts:
+                    dependencies.append({'name': parts[0], 'version': parts[1] if len(parts) > 1 else 'latest'})
+        return {'dependencies': dependencies}
+
+    def _parse_pom_xml(self, data: str) -> Dict[str, Any]:
+        """Parse POM XML file"""
+        dependencies = []
+        try:
+            root = ET.fromstring(data)
+            for dependency in root.findall('.//{http://maven.apache.org/POM/4.0.0}dependency'):
+                groupId = dependency.find('{http://maven.apache.org/POM/4.0.0}groupId').text
+                artifactId = dependency.find('{http://maven.apache.org/POM/4.0.0}artifactId').text
+                version = dependency.find('{http://maven.apache.org/POM/4.0.0}version').text
+                dependencies.append({'name': f'{groupId}:{artifactId}', 'version': version})
+        except ET.ParseError as e:
+            raise ValueError(f"Invalid POM XML format: {str(e)}")
+        return {'dependencies': dependencies}
+
+    def _parse_sarif(self, data: str) -> Dict[str, Any]:
+        """Parse SARIF file"""
+        results = []
+        try:
+            sarif_data = json.loads(data)
+            for run in sarif_data.get('runs', []):
+                tool = run.get('tool', {}).get('driver', {}).get('name', 'Unknown')
+                for result in run.get('results', []):
+                    ruleId = result.get('ruleId', 'Unknown')
+                    message = result.get('message', {}).get('text', '')
+                    results.append({'tool': tool, 'ruleId': ruleId, 'message': message})
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid SARIF format: {e}")
+        return {'results': results}
+
+    def _parse_dockerfile(self, data: str) -> Dict[str, Any]:
+        """Parse Dockerfile for base images and commands"""
+        dockerfile_info = {
+            'base_images': [],
+            'commands': []
+        }
+        for line in data.strip().split('\n'):
+            line = line.strip()
+            if line.upper().startswith('FROM'):
+                dockerfile_info['base_images'].append(line.split()[1])
+            else:
+                dockerfile_info['commands'].append(line)
+        return dockerfile_info
+
+    def _parse_yarn_lock(self, data: str) -> Dict[str, Any]:
+        """Parse yarn.lock file"""
+        dependencies = []
+        current_package = None
+        for line in data.strip().split('\n'):
+            if line.startswith('#') or not line.strip():
+                continue
+            if line.startswith('
+
 import xml.etree.ElementTree as ET
 import re
 import json
+import yaml
 from typing import Dict, List, Any, Optional
+from packaging import version as pkg_version
 
 class NmapParser:
     """Parser for Nmap scan results in XML and plain text formats"""
@@ -26,21 +176,42 @@ class NmapParser:
             'websphere': r'WebSphere\s+(\d+\.\d+\.\d+)',
         }
     
-    def parse(self, nmap_data: str) -> Dict[str, Any]:
+    def parse(self, data: str, file_type: str) -> Dict[str, Any]:
         """
-        Parse Nmap scan data in XML or plain text format
+        Parse various vulnerability and dependency files
         
         Args:
-            nmap_data: Nmap scan output as string
+            data: Input data as a string
+            file_type: Type of file ('nmap_xml', 'nmap_text', 'requirements', 'package_json', 
+                      'composer_json', 'gemfile', 'pom_xml', 'sarif', 'dockerfile')
             
         Returns:
-            Dictionary containing parsed scan results
+            Dictionary containing parsed results
         """
-        # Try to parse as XML first
-        if nmap_data.strip().startswith('<?xml') or nmap_data.strip().startswith('<nmaprun'):
-            return self._parse_xml(nmap_data)
+        if file_type == 'nmap_xml':
+            return self._parse_xml(data)
+        elif file_type == 'nmap_text':
+            return self._parse_plain_text(data)
+        elif file_type == 'requirements':
+            return self._parse_requirements(data)
+        elif file_type == 'package_json':
+            return self._parse_package_json(data)
+        elif file_type == 'composer_json':
+            return self._parse_composer_json(data)
+        elif file_type == 'gemfile':
+            return self._parse_gemfile(data)
+        elif file_type == 'pom_xml':
+            return self._parse_pom_xml(data)
+        elif file_type == 'sarif':
+            return self._parse_sarif(data)
+        elif file_type == 'dockerfile':
+            return self._parse_dockerfile(data)
+        elif file_type == 'yarn_lock':
+            return self._parse_yarn_lock(data)
+        elif file_type == 'pipfile':
+            return self._parse_pipfile(data)
         else:
-            return self._parse_plain_text(nmap_data)
+            raise ValueError(f"Unsupported file type: {file_type}")
     
     def _parse_xml(self, xml_data: str) -> Dict[str, Any]:
         """Parse Nmap XML output"""
@@ -170,7 +341,7 @@ class NmapParser:
         """Parse a single service line from plain text output"""
         # Pattern: PORT STATE SERVICE VERSION
         # Example: 22/tcp open ssh OpenSSH 7.2p2 Ubuntu 4ubuntu2.8
-        pattern = r'^(\d+)/(\w+)\s+(\w+)\s+(\w+)(?:\s+(.+))?$'
+        pattern = r'^(\d+)/(\w+)\s+(\w+)\s+(\w+)(?:\s+(.+))?'
         match = re.match(pattern, line)
         
         if not match:
@@ -224,6 +395,29 @@ class NmapParser:
                 version_info['product'] = service
         
         return version_info
+
+    def _parse_requirements(self, data: str) -> Dict[str, Any]:
+        """Parse requirements.txt file"""
+        dependencies = []
+        for line in data.strip().split('\n'):
+            line = line.strip()
+            if line and not line.startswith('#'):
+                parts = re.split(r'==|>=|<=|>|<|~', line)
+                dependencies.append({'name': parts[0], 'version': parts[1] if len(parts) > 1 else 'latest'})
+        return {'dependencies': dependencies}
+
+    def _parse_package_json(self, data: str) -> Dict[str, Any]:
+        """Parse package.json file"""
+        dependencies = []
+        try:
+            package_data = json.loads(data)
+            for name, version in package_data.get('dependencies', {}).items():
+                dependencies.append({'name': name, 'version': version.replace('^', '')})
+            for name, version in package_data.get('devDependencies', {}).items():
+                dependencies.append({'name': name, 'version': version.replace('^', '')})
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid package.json format: {e}")
+        return {'dependencies': dependencies}
     
     def get_service_summary(self, parsed_data: Dict[str, Any]) -> Dict[str, Any]:
         """Generate a summary of detected services"""
