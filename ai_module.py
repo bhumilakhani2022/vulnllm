@@ -8,30 +8,30 @@ import random
 
 class VulnerabilityAnalyzer:
     """AI-powered vulnerability analyzer that provides comprehensive security analysis"""
-    
+
     def __init__(self):
         self.config = Config()
-        
-    def analyze_vulnerabilities(self, parsed_data: Dict[str, Any], 
-                              business_context: str = "", 
-                              include_cvss: bool = True,
-                              include_exploits: bool = True) -> Dict[str, Any]:
+
+    def analyze_vulnerabilities(self, parsed_data: Dict[str, Any],
+                                business_context: str = "",
+                                include_cvss: bool = True,
+                                include_exploits: bool = True) -> Dict[str, Any]:
         """
         Analyze vulnerabilities using AI and provide comprehensive recommendations
-        
+
         Args:
             parsed_data: Parsed Nmap scan data
             business_context: Business context for the analysis
             include_cvss: Whether to include CVSS scores
             include_exploits: Whether to include exploit predictions
-            
+
         Returns:
             Dict containing comprehensive vulnerability analysis
         """
-        
+
         # Extract services from parsed data
         services = parsed_data.get('services', [])
-        
+
         # Create base analysis structure
         analysis = {
             'executive_summary': '',
@@ -43,50 +43,89 @@ class VulnerabilityAnalyzer:
             'action_plan': [],
             'risk_metrics': {}
         }
-        
+
         # If no services found, return empty analysis
         if not services:
             analysis['executive_summary'] = "No services detected in the scan. Please ensure the target is reachable and responsive."
             return analysis
-        
-        # Try to get AI analysis if API key is available
-        if Config.validate_api_key():
+
+        # Try to get AI analysis - prefer Gemini, fallback to OpenAI
+        if Config.validate_gemini_key():
             try:
-                ai_analysis = self._get_ai_analysis(services, business_context, include_cvss, include_exploits)
+                print("Using Gemini API for analysis...")
+                ai_analysis = self._get_ai_analysis_gemini(
+                    services, business_context, include_cvss, include_exploits)
                 analysis.update(ai_analysis)
             except Exception as e:
-                print(f"AI analysis failed: {e}")
-                # Fall back to basic analysis
+                print(f"Gemini API analysis failed: {e}")
+                # Try OpenAI as fallback
+                if Config.validate_api_key():
+                    try:
+                        print("Falling back to OpenAI API...")
+                        ai_analysis = self._get_ai_analysis_openai(
+                            services, business_context, include_cvss, include_exploits)
+                        analysis.update(ai_analysis)
+                    except Exception as e2:
+                        print(f"OpenAI API analysis also failed: {e2}")
+                        analysis = self._get_basic_analysis(
+                            services, business_context)
+                else:
+                    analysis = self._get_basic_analysis(
+                        services, business_context)
+        elif Config.validate_api_key():
+            try:
+                print("Using OpenAI API for analysis...")
+                ai_analysis = self._get_ai_analysis_openai(
+                    services, business_context, include_cvss, include_exploits)
+                analysis.update(ai_analysis)
+            except Exception as e:
+                print(f"OpenAI API analysis failed: {e}")
                 analysis = self._get_basic_analysis(services, business_context)
         else:
-            # Use basic analysis if no API key
+            print("No valid API keys found, using basic analysis...")
             analysis = self._get_basic_analysis(services, business_context)
-        
+
         # Calculate risk metrics
-        analysis['risk_metrics'] = self._calculate_risk_metrics(analysis['findings'])
-        
+        analysis['risk_metrics'] = self._calculate_risk_metrics(
+            analysis['findings'])
+
         return analysis
-    
-    def _get_ai_analysis(self, services: List[Dict], business_context: str, 
-                        include_cvss: bool, include_exploits: bool) -> Dict[str, Any]:
-        """Get AI-powered vulnerability analysis"""
-        
+
+    def _get_ai_analysis_gemini(self, services: List[Dict], business_context: str,
+                                include_cvss: bool, include_exploits: bool) -> Dict[str, Any]:
+        """Get AI-powered vulnerability analysis using Gemini API"""
+
         # Prepare the prompt for AI analysis
-        prompt = self._create_analysis_prompt(services, business_context, include_cvss, include_exploits)
-        
-        # Call OpenAI API
-        response = self._call_openai_api(prompt)
-        
+        prompt = self._create_analysis_prompt(
+            services, business_context, include_cvss, include_exploits)
+
+        # Call Gemini API
+        response = self._call_gemini_api(prompt)
+
         # Parse AI response
         return self._parse_ai_response(response, services)
-    
+
+    def _get_ai_analysis_openai(self, services: List[Dict], business_context: str,
+                                include_cvss: bool, include_exploits: bool) -> Dict[str, Any]:
+        """Get AI-powered vulnerability analysis using OpenAI API"""
+
+        # Prepare the prompt for AI analysis
+        prompt = self._create_analysis_prompt(
+            services, business_context, include_cvss, include_exploits)
+
+        # Call OpenAI API
+        response = self._call_openai_api(prompt)
+
+        # Parse AI response
+        return self._parse_ai_response(response, services)
+
     def _get_basic_analysis(self, services: List[Dict], business_context: str) -> Dict[str, Any]:
         """Get basic vulnerability analysis without AI"""
-        
+
         findings = []
         recommendations = []
         ai_recommendations = []
-        
+
         for service in services:
             # Create basic finding
             finding = {
@@ -96,7 +135,7 @@ class VulnerabilityAnalyzer:
                 'impact': self._get_basic_impact(service)
             }
             findings.append(finding)
-            
+
             # Create basic recommendation
             recommendation = {
                 'service': service.get('service', 'Unknown'),
@@ -107,7 +146,7 @@ class VulnerabilityAnalyzer:
                 'priority': 'High' if finding['risk_score'] >= 7 else 'Medium' if finding['risk_score'] >= 4 else 'Low'
             }
             recommendations.append(recommendation)
-            
+
             # Create basic AI recommendation
             ai_rec = {
                 'service': service.get('service', 'Unknown'),
@@ -131,12 +170,13 @@ class VulnerabilityAnalyzer:
                 }
             }
             ai_recommendations.append(ai_rec)
-        
+
         # Create executive summary
         high_risk_count = len([f for f in findings if f['risk_score'] >= 7])
-        medium_risk_count = len([f for f in findings if 4 <= f['risk_score'] < 7])
+        medium_risk_count = len(
+            [f for f in findings if 4 <= f['risk_score'] < 7])
         low_risk_count = len([f for f in findings if f['risk_score'] < 4])
-        
+
         executive_summary = f"""
 **Security Assessment Summary**
 
@@ -155,7 +195,7 @@ The overall security posture shows {high_risk_count} high-risk, {medium_risk_cou
 - Implement network segmentation and monitoring
 - Review service configurations for security hardening
         """.strip()
-        
+
         # Create business impact
         business_impact = f"""
 **Business Impact Analysis**
@@ -168,7 +208,7 @@ The identified vulnerabilities pose varying levels of risk to business operation
 
 **Business Context:** {business_context if business_context else "No specific business context provided."}
         """.strip()
-        
+
         # Create action plan
         action_plan = [
             {
@@ -192,7 +232,7 @@ The identified vulnerabilities pose varying levels of risk to business operation
                 'description': 'Establish continuous security monitoring'
             }
         ]
-        
+
         return {
             'executive_summary': executive_summary,
             'findings': findings,
@@ -202,31 +242,32 @@ The identified vulnerabilities pose varying levels of risk to business operation
             'business_impact': business_impact,
             'action_plan': action_plan
         }
-    
+
     def _calculate_basic_risk_score(self, service: Dict) -> float:
         """Calculate basic risk score for a service"""
         score = 3.0  # Base score
-        
+
         # Add score for known vulnerabilities
         if service.get('cves'):
             score += len(service.get('cves', [])) * 0.5
-        
+
         # Add score for common vulnerable services
-        vulnerable_services = ['ssh', 'ftp', 'telnet', 'http', 'https', 'mysql', 'postgresql']
+        vulnerable_services = ['ssh', 'ftp', 'telnet',
+                               'http', 'https', 'mysql', 'postgresql']
         if any(vuln in service.get('service', '').lower() for vuln in vulnerable_services):
             score += 2.0
-        
+
         # Add score for old versions (if version contains old indicators)
         version = service.get('version', '').lower()
         if any(old in version for old in ['old', 'legacy', 'deprecated']):
             score += 1.5
-        
+
         return min(score, 10.0)  # Cap at 10
-    
+
     def _get_basic_impact(self, service: Dict) -> str:
         """Get basic impact assessment for a service"""
         service_name = service.get('service', '').lower()
-        
+
         if 'ssh' in service_name:
             return "Potential remote access and system compromise"
         elif 'http' in service_name or 'web' in service_name:
@@ -237,18 +278,19 @@ The identified vulnerabilities pose varying levels of risk to business operation
             return "File transfer vulnerabilities and data leakage"
         else:
             return "Service-specific vulnerabilities and potential exploitation"
-    
-    def _create_analysis_prompt(self, services: List[Dict], business_context: str, 
-                              include_cvss: bool, include_exploits: bool) -> str:
+
+    def _create_analysis_prompt(self, services: List[Dict], business_context: str,
+                                include_cvss: bool, include_exploits: bool) -> str:
         """Create prompt for AI analysis"""
-        
+
         services_text = "\n".join([
             f"- {service.get('service', 'Unknown')} on port {service.get('port', 'Unknown')} "
             f"(Version: {service.get('version', 'Unknown')})" +
-            (f" CVEs: {', '.join(service.get('cves', []))}" if service.get('cves') else "")
+            (f" CVEs: {', '.join(service.get('cves', []))}" if service.get(
+                'cves') else "")
             for service in services
         ])
-        
+
         prompt = f"""
 As a cybersecurity expert, analyze the following network services and provide a comprehensive security assessment:
 
@@ -311,17 +353,17 @@ Focus on:
 {'- CVSS scores and detailed vulnerability analysis' if include_cvss else ''}
 {'- Exploit likelihood and attack vector analysis' if include_exploits else ''}
 """
-        
+
         return prompt
-    
+
     def _call_openai_api(self, prompt: str) -> str:
         """Call OpenAI API with the analysis prompt"""
-        
+
         headers = {
             'Authorization': f'Bearer {Config.OPENAI_API_KEY}',
             'Content-Type': 'application/json'
         }
-        
+
         payload = {
             'model': Config.OPENAI_MODEL,
             'messages': [
@@ -337,23 +379,72 @@ Focus on:
             'max_tokens': Config.DEFAULT_MAX_TOKENS,
             'temperature': Config.DEFAULT_TEMPERATURE
         }
-        
+
         response = requests.post(
             Config.OPENAI_API_URL,
             headers=headers,
             json=payload,
             timeout=30
         )
-        
+
         if response.status_code != 200:
-            raise Exception(f"OpenAI API call failed with status {response.status_code}: {response.text}")
-        
+            raise Exception(
+                f"OpenAI API call failed with status {response.status_code}: {response.text}")
+
         response_data = response.json()
         return response_data['choices'][0]['message']['content']
-    
+
+    def _call_gemini_api(self, prompt: str) -> str:
+        """Call Gemini API with the analysis prompt"""
+
+        headers = {
+            'Content-Type': 'application/json'
+        }
+
+        # Gemini API payload structure
+        payload = {
+            'contents': [
+                {
+                    'parts': [
+                        {
+                            'text': f"You are a cybersecurity expert providing detailed vulnerability analysis. {prompt}"
+                        }
+                    ]
+                }
+            ],
+            'generationConfig': {
+                'temperature': Config.DEFAULT_TEMPERATURE,
+                'maxOutputTokens': Config.DEFAULT_MAX_TOKENS
+            }
+        }
+
+        # Add API key to URL
+        url = f"{Config.GEMINI_API_URL}?key={Config.GEMINI_API_KEY}"
+
+        response = requests.post(
+            url,
+            headers=headers,
+            json=payload,
+            timeout=30
+        )
+
+        if response.status_code != 200:
+            raise Exception(
+                f"Gemini API call failed with status {response.status_code}: {response.text}")
+
+        response_data = response.json()
+
+        # Extract text from Gemini response
+        if 'candidates' in response_data and len(response_data['candidates']) > 0:
+            candidate = response_data['candidates'][0]
+            if 'content' in candidate and 'parts' in candidate['content']:
+                return candidate['content']['parts'][0]['text']
+
+        raise Exception("No valid response from Gemini API")
+
     def _parse_ai_response(self, response: str, services: List[Dict]) -> Dict[str, Any]:
         """Parse AI response into structured format"""
-        
+
         try:
             # Try to parse as JSON
             if response.strip().startswith('{'):
@@ -361,21 +452,22 @@ Focus on:
             else:
                 # If not JSON, try to extract JSON from markdown code blocks
                 import re
-                json_match = re.search(r'```json\n(.*?)\n```', response, re.DOTALL)
+                json_match = re.search(
+                    r'```json\n(.*?)\n```', response, re.DOTALL)
                 if json_match:
                     return json.loads(json_match.group(1))
                 else:
                     # Fall back to basic analysis if parsing fails
                     raise Exception("Could not parse AI response")
-        
+
         except Exception as e:
             print(f"Failed to parse AI response: {e}")
             # Fall back to basic analysis
             return self._get_basic_analysis(services, "")
-    
+
     def _calculate_risk_metrics(self, findings: List[Dict]) -> Dict[str, Any]:
         """Calculate risk metrics from findings"""
-        
+
         if not findings:
             return {
                 'total_findings': 0,
@@ -384,14 +476,15 @@ Focus on:
                 'low_risk': 0,
                 'average_risk_score': 0
             }
-        
+
         high_risk = len([f for f in findings if f.get('risk_score', 0) >= 7])
-        medium_risk = len([f for f in findings if 4 <= f.get('risk_score', 0) < 7])
+        medium_risk = len([f for f in findings if 4 <=
+                          f.get('risk_score', 0) < 7])
         low_risk = len([f for f in findings if f.get('risk_score', 0) < 4])
-        
+
         total_risk = sum(f.get('risk_score', 0) for f in findings)
         avg_risk = total_risk / len(findings) if findings else 0
-        
+
         return {
             'total_findings': len(findings),
             'high_risk': high_risk,
